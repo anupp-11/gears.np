@@ -34,7 +34,7 @@ export function DesktopNav({ settings }: DesktopNavProps) {
   }, []);
 
   return (
-    <nav className="hidden md:block sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b-2 border-[#e10600]">
+    <nav className="hidden md:block bg-background/95 backdrop-blur-sm border-b-2 border-[#e10600]">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}

@@ -1,0 +1,1 @@
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS show_hero_banner BOOLEAN NOT NULL DEFAULT true;

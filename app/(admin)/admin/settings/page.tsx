@@ -31,9 +31,28 @@ const settingsSchema = z.object({
   support_email: z.string().email("Invalid email").optional().or(z.literal("")),
   instagram_url: z.string().url("Invalid URL").optional().or(z.literal("")),
   tiktok_url: z.string().url("Invalid URL").optional().or(z.literal("")),
+  show_hero_banner: z.boolean(),
 });
 
 type SettingsFormValues = z.infer<typeof settingsSchema>;
+
+type PromoBannerState = {
+  title: string;
+  button_text: string;
+  button_link: string;
+  image: File | null;
+  preview: string;
+  saving: boolean;
+};
+
+const defaultBanner = (): PromoBannerState => ({
+  title: "",
+  button_text: "Shop now",
+  button_link: "/products",
+  image: null,
+  preview: "",
+  saving: false,
+});
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
@@ -46,6 +65,7 @@ export default function SettingsPage() {
   const [faviconPreview, setFaviconPreview] = useState<string>("");
   const [ogImage, setOgImage] = useState<File | null>(null);
   const [ogPreview, setOgPreview] = useState<string>("");
+  const [promoBanners, setPromoBanners] = useState<[PromoBannerState, PromoBannerState]>([defaultBanner(), defaultBanner()]);
 
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsSchema),
@@ -60,6 +80,7 @@ export default function SettingsPage() {
       support_email: "",
       instagram_url: "",
       tiktok_url: "",
+      show_hero_banner: true,
     },
   });
 
@@ -80,6 +101,7 @@ export default function SettingsPage() {
             support_email: data.support_email || "",
             instagram_url: data.instagram_url || "",
             tiktok_url: data.tiktok_url || "",
+            show_hero_banner: data.show_hero_banner !== false,
           });
           // Set banner preview if exists
           if (data.banner_image_url) {
@@ -107,6 +129,71 @@ export default function SettingsPage() {
 
     fetchSettings();
   }, [form]);
+
+  useEffect(() => {
+    fetch("/api/homepage-banners")
+      .then((r) => r.json())
+      .then((data: { position: number; title: string; button_text: string; button_link: string; image_url?: string }[]) => {
+        if (!Array.isArray(data)) return;
+        setPromoBanners((prev) => {
+          const next: [PromoBannerState, PromoBannerState] = [{ ...prev[0] }, { ...prev[1] }];
+          data.forEach((b) => {
+            const idx = b.position - 1;
+            if (idx === 0 || idx === 1) {
+              next[idx] = {
+                ...next[idx],
+                title: b.title ?? "",
+                button_text: b.button_text ?? "Shop now",
+                button_link: b.button_link ?? "/products",
+                preview: b.image_url ?? "",
+              };
+            }
+          });
+          return next;
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  const updateBanner = (idx: 0 | 1, patch: Partial<PromoBannerState>) => {
+    setPromoBanners((prev) => {
+      const next: [PromoBannerState, PromoBannerState] = [{ ...prev[0] }, { ...prev[1] }];
+      next[idx] = { ...next[idx], ...patch };
+      return next;
+    });
+  };
+
+  const handleBannerFileChange = (idx: 0 | 1, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => updateBanner(idx, { image: file, preview: reader.result as string });
+    reader.readAsDataURL(file);
+  };
+
+  const savePromoBanner = async (idx: 0 | 1) => {
+    const b = promoBanners[idx];
+    updateBanner(idx, { saving: true });
+    try {
+      const fd = new FormData();
+      fd.append("position", String(idx + 1));
+      fd.append("title", b.title);
+      fd.append("button_text", b.button_text);
+      fd.append("button_link", b.button_link);
+      if (b.image) fd.append("image", b.image);
+      const res = await fetch("/api/homepage-banners", { method: "PATCH", body: fd });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to save");
+      }
+      const saved = await res.json();
+      updateBanner(idx, { image: null, preview: saved.image_url ?? b.preview, saving: false });
+      toast.success(`Banner ${idx + 1} saved`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save banner");
+      updateBanner(idx, { saving: false });
+    }
+  };
 
   const handleBannerImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -172,6 +259,7 @@ export default function SettingsPage() {
         if (data.support_email) formData.append("support_email", data.support_email);
         if (data.instagram_url) formData.append("instagram_url", data.instagram_url);
         if (data.tiktok_url) formData.append("tiktok_url", data.tiktok_url);
+        formData.append("show_hero_banner", String(data.show_hero_banner));
         if (bannerImage) formData.append("banner_image", bannerImage);
         if (logoImage) formData.append("logo_image", logoImage);
         if (faviconImage) formData.append("favicon_image", faviconImage);
@@ -308,6 +396,28 @@ export default function SettingsPage() {
                     </FormControl>
                     <FormDescription>Promotional banner text</FormDescription>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="show_hero_banner"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                    <div>
+                      <FormLabel>Show Hero Banner</FormLabel>
+                      <FormDescription>Display the hero image section at the top of the homepage</FormDescription>
+                    </div>
+                    <FormControl>
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={field.onChange}
+                        className="h-5 w-5 accent-[#e10600]"
+                        disabled={loading}
+                      />
+                    </FormControl>
                   </FormItem>
                 )}
               />
@@ -545,6 +655,84 @@ export default function SettingsPage() {
           </div>
         </form>
       </Form>
+
+      {/* Homepage Promotional Banners */}
+      <div className="mt-6 max-w-2xl">
+        <Card>
+          <CardHeader>
+            <CardTitle>Homepage Banners</CardTitle>
+            <CardDescription>Two side-by-side promotional banners shown between the hero and featured products</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {([0, 1] as const).map((idx) => {
+              const b = promoBanners[idx];
+              return (
+                <div key={idx} className="border border-border rounded-lg p-4 space-y-3">
+                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Banner {idx + 1}</p>
+
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Image</label>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleBannerFileChange(idx, e)}
+                      disabled={b.saving}
+                    />
+                    {b.preview && (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={b.preview}
+                        alt={`Banner ${idx + 1} preview`}
+                        className="mt-2 w-full h-40 object-cover rounded border"
+                      />
+                    )}
+                    <p className="text-xs text-muted-foreground">Recommended: 800×533px (3:2 ratio)</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium">Title / Headline</label>
+                    <Input
+                      value={b.title}
+                      onChange={(e) => updateBanner(idx, { title: e.target.value })}
+                      placeholder="e.g. New Season Drops"
+                      disabled={b.saving}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">Button Text</label>
+                      <Input
+                        value={b.button_text}
+                        onChange={(e) => updateBanner(idx, { button_text: e.target.value })}
+                        placeholder="Shop now"
+                        disabled={b.saving}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">Button Link</label>
+                      <Input
+                        value={b.button_link}
+                        onChange={(e) => updateBanner(idx, { button_link: e.target.value })}
+                        placeholder="/products"
+                        disabled={b.saving}
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={() => savePromoBanner(idx)}
+                    disabled={b.saving}
+                    className="bg-[#e10600] hover:bg-[#c00500] w-full"
+                  >
+                    {b.saving ? "Saving..." : `Save Banner ${idx + 1}`}
+                  </Button>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

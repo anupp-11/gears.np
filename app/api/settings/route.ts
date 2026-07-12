@@ -66,6 +66,7 @@ export async function PATCH(request: NextRequest) {
         support_email: formData.get("support_email") as string | null,
         instagram_url: formData.get("instagram_url") as string | null,
         tiktok_url: formData.get("tiktok_url") as string | null,
+        show_hero_banner: formData.get("show_hero_banner") === "true",
         updated_at: new Date().toISOString(),
       };
 

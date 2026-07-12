@@ -12,7 +12,7 @@ export default async function HomePage() {
   // Fetch settings for hero banner and branding
   const { data: settings } = await supabase
     .from("settings")
-    .select("site_name, logo_url, banner_image_url, primary_color, hero_title, promo_text")
+    .select("site_name, logo_url, banner_image_url, primary_color, hero_title, promo_text, show_hero_banner")
     .eq("id", 1)
     .single();
   // Fetch featured products, fallback to latest if none featured
@@ -46,6 +46,13 @@ export default async function HomePage() {
     featuredProducts = latestProducts;
   }
 
+  // Fetch homepage promotional banners
+  const { data: homepageBanners } = await supabase
+    .from("homepage_banners")
+    .select("*")
+    .eq("is_active", true)
+    .order("position");
+
   // Fetch upcoming events (max 3)
   const { data: upcomingEvents } = await supabase
     .from("events")
@@ -70,6 +77,8 @@ export default async function HomePage() {
     _count: { products: team.products[0].count }
   }));
 
+  const showHero = settings?.show_hero_banner !== false;
+
   return (
     <div>
       {/* Announcement Banner - Only on Home Page */}
@@ -82,6 +91,7 @@ export default async function HomePage() {
       )}
       
       {/* Hero Section */}
+      {showHero && (
       <section className="relative h-[260px] md:h-[500px] bg-gradient-to-br from-gray-900 to-gray-800 overflow-hidden">
         {settings?.banner_image_url ? (
           <Image
@@ -141,6 +151,39 @@ export default async function HomePage() {
           </Link>
         </div>
       </section>
+      )}
+
+      {/* Promotional Banners */}
+      {homepageBanners && homepageBanners.length > 0 && (
+        <section className="grid grid-cols-1 sm:grid-cols-2">
+          {homepageBanners.map((banner: { position: number; image_url: string | null; title: string; button_text: string; button_link: string }) => (
+            <div key={banner.position} className="relative overflow-hidden h-[430px] sm:h-[calc(100vh-64px)] bg-gray-900 group">
+
+              {banner.image_url && (
+                <Image
+                  src={banner.image_url}
+                  alt={banner.title || `Banner ${banner.position}`}
+                  fill
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+              <div className="absolute bottom-0 left-0 p-6 md:p-8">
+                {banner.title && (
+                  <h3 className="text-white font-bold text-xl md:text-2xl mb-3 drop-shadow">
+                    {banner.title}
+                  </h3>
+                )}
+                <Link href={banner.button_link}>
+                  <button className="bg-white text-black px-5 py-2 rounded-full text-sm font-semibold hover:bg-gray-100 transition-colors">
+                    {banner.button_text}
+                  </button>
+                </Link>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
 
       {/* Featured Products */}
       <section className="py-16 bg-background">
